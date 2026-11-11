@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#14532d">
+<meta name="robots" content="noindex">
+<title>Bargeld</title>
+<style>
+  :root{--bg:#f4f6f3;--card:#fff;--ink:#1b2620;--muted:#66736b;--line:#dfe5df;--acc:#14532d;--red:#b42318;--red2:#fde8e6;--grn:#166534;--grn2:#dcfce7}
+  @media (prefers-color-scheme:dark){:root{--bg:#0f1512;--card:#18201b;--ink:#e7eee9;--muted:#9aa8a0;--line:#2a352e;--acc:#4ade80;--red:#f87171;--red2:#3a1a17;--grn:#4ade80;--grn2:#14301f}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,Roboto,Arial,sans-serif}
+  main{max-width:480px;margin:0 auto;padding:12px 14px 32px}
+  h1{font-size:17px;margin:4px 2px 10px;font-weight:600}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+  .toggle{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--bg);border-radius:12px;padding:4px;margin-bottom:12px}
+  .toggle button{border:0;border-radius:9px;padding:10px;font:inherit;font-weight:600;background:transparent;color:var(--muted)}
+  .toggle .on.aus{background:var(--red2);color:var(--red)} .toggle .on.ein{background:var(--grn2);color:var(--grn)}
+  .betrag{display:flex;align-items:center;gap:8px;border-bottom:2px solid var(--line);padding:2px 2px 8px;margin-bottom:10px}
+  .betrag input{flex:1;min-width:0;border:0;background:transparent;color:var(--ink);font:700 38px/1.1 system-ui,Arial,sans-serif;outline:none}
+  .betrag span{font-size:26px;color:var(--muted);font-weight:600}
+  label{display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:10px 0 6px}
+  input[type=text],input[type=date],select{width:100%;font:inherit;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:7px 12px;font:inherit;font-size:14px}
+  .chip.on{background:var(--acc);border-color:var(--acc);color:var(--card)}
+  .save{width:100%;margin-top:14px;border:0;border-radius:12px;padding:15px;font:700 17px system-ui,Arial,sans-serif;background:var(--acc);color:var(--card)}
+  .save:disabled{opacity:.5}
+  .msg{min-height:20px;font-size:14px;margin-top:8px;text-align:center}
+  .ok{color:var(--grn)} .err{color:var(--red)}
+  h2{font-size:14px;margin:0 0 6px;color:var(--muted);font-weight:600}
+  ul{list-style:none;margin:0;padding:0}
+  li{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--line)}
+  li:first-child{border-top:0}
+  .t{font-weight:600;font-size:15px} .s{font-size:12px;color:var(--muted)}
+  .b{font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums} .b.Ausgabe{color:var(--red)} .b.Einnahme{color:var(--grn)}
+  .x{border:0;background:transparent;color:var(--muted);font-size:20px;padding:4px 8px}
+  .leer{color:var(--muted);font-size:14px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Bargeld</h1>
+  <form class="card" id="f" autocomplete="off">
+    <div class="toggle">
+      <button type="button" class="aus on" data-art="Ausgabe">Ausgabe</button>
+      <button type="button" class="ein" data-art="Einnahme">Einnahme</button>
+    </div>
+    <div class="betrag"><input id="betrag" inputmode="decimal" placeholder="0,00" aria-label="Betrag"><span>€</span></div>
+    <label for="text">Wofür</label>
+    <input type="text" id="text" list="vorschlaege" placeholder="z. B. Bäcker, Klavier, Gemeinde">
+    <datalist id="vorschlaege"></datalist>
+    <label>Kategorie</label>
+    <div class="chips" id="chips"></div>
+    <select id="mehr" style="margin-top:8px" aria-label="Weitere Kategorien"></select>
+    <label for="datum">Datum</label>
+    <input type="date" id="datum">
+    <button class="save" id="save" type="submit">Speichern</button>
+    <div class="msg" id="msg" role="status"></div>
+  </form>
+  <section class="card">
+    <h2>Zuletzt erfasst</h2>
+    <ul id="liste"><li class="leer">lädt …</li></ul>
+  </section>
+</main>
+<script>
+const API = "https://script.google.com/macros/s/AKfycbzjw1wU0BubdwDr-0KhvVI8LazYEZ0mP4OHdJX6VcMIGaTfuqAigPViuHNXbzcNljxNYA/exec";
+function schluessel() {
+  const m = location.hash.match(/k=([0-9a-f]{20,})/i);
+  try { if (m) localStorage.setItem('bargeld-k', m[1]); return m ? m[1] : (localStorage.getItem('bargeld-k') || ''); }
+  catch (e) { return m ? m[1] : ''; }
+}
+const K = schluessel();
+const AUSGABEN = ["Lebensmittel","Lifestyle","10. Teil (Spende)","Drogerie","KFZ - Tanken","KFZ - Sonstiges","Kleidung","Geschenke","Schule Kinder","Musikunterricht","Reisen/Ausflüge","Gesundheit","Anschaffungen","Arbeit","Mitgliedsbeitrag","Baumarkt","Handwerker","KFZ - Reparaturen","Bürobedarf","Gebühren/Post","Sonstiges Ausgaben"];
+const EINNAHMEN = ["Sonstiges (Einnahme)"];
+const FAV = AUSGABEN.slice(0, 9);
+let art = 'Ausgabe', kat = 'Lebensmittel', merk = {};
+const $ = id => document.getElementById(id);
+const eur = n => n.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const heute = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function api(aktion, extra) {
+  const r = await fetch(API, {method: 'POST', credentials: 'omit', redirect: 'follow',
+    body: JSON.stringify(Object.assign({k: K, aktion: aktion}, extra || {}))});
+  const d = await r.json();
+  if (!d.ok) throw new Error(d.fehler || 'Fehler');
+  return d.daten;
+}
+function zeichneKategorien() {
+  const liste = art === 'Einnahme' ? EINNAHMEN : FAV;
+  if ((art === 'Einnahme' ? EINNAHMEN : AUSGABEN).indexOf(kat) < 0) kat = liste[0];
+  $('chips').innerHTML = liste.map(c => `<button type="button" class="chip${c === kat ? ' on' : ''}" data-k="${esc(c)}">${esc(c)}</button>`).join('');
+  const rest = art === 'Einnahme' ? [] : AUSGABEN.slice(9);
+  $('mehr').style.display = rest.length ? '' : 'none';
+  $('mehr').innerHTML = '<option value="">Weitere Kategorien …</option>' + rest.map(c => `<option${c === kat ? ' selected' : ''}>${esc(c)}</option>`).join('');
+}
+function setzeArt(a) {
+  art = a;
+  document.querySelectorAll('.toggle button').forEach(b => b.classList.toggle('on', b.dataset.art === a));
+  zeichneKategorien();
+}
+document.querySelectorAll('.toggle button').forEach(b => b.onclick = () => setzeArt(b.dataset.art));
+$('chips').onclick = e => { if (e.target.dataset.k) { kat = e.target.dataset.k; zeichneKategorien(); } };
+$('mehr').onchange = e => { if (e.target.value) { kat = e.target.value; zeichneKategorien(); } };
+$('text').addEventListener('change', () => {
+  const k = merk[$('text').value.trim()];
+  if (k) { setzeArt(EINNAHMEN.indexOf(k) >= 0 ? 'Einnahme' : 'Ausgabe'); kat = k; zeichneKategorien(); }
+});
+function meldung(t, cls) { const m = $('msg'); m.textContent = t; m.className = 'msg ' + cls; clearTimeout(meldung.t); meldung.t = setTimeout(() => m.textContent = '', 4000); }
+function zeigeListe(d) {
+  merk = d.vorschlaege || {};
+  $('vorschlaege').innerHTML = Object.keys(merk).sort((a, b) => a.localeCompare(b, 'de')).map(t => `<option value="${esc(t)}">`).join('');
+  $('liste').innerHTML = d.letzte.length ? d.letzte.map(e => `<li><div><div class="t">${esc(e.text)}</div><div class="s">${esc(e.datum)} · ${esc(e.kat)}${e.uebertragen ? ' · übertragen' : ''}</div></div>
+    <div class="b ${e.art === 'Einnahme' ? 'Einnahme' : 'Ausgabe'}">${e.art === 'Einnahme' ? '+' : '−'}${eur(e.betrag)} €</div>${e.uebertragen ? '<span></span>' : `<button class="x" data-id="${esc(e.id)}" aria-label="Löschen">×</button>`}</li>`).join('')
+    : '<li class="leer">Noch nichts erfasst.</li>';
+}
+$('liste').onclick = async e => {
+  const id = e.target.dataset && e.target.dataset.id; if (!id) return;
+  if (!e.target.classList.contains('sicher')) { e.target.classList.add('sicher'); e.target.textContent = 'löschen?'; e.target.style.fontSize = '13px'; return; }
+  try { zeigeListe(await api('loeschen', {id})); meldung('Gelöscht.', 'ok'); } catch (err) { meldung(err.message, 'err'); }
+};
+$('f').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const betrag = $('betrag').value.trim(), text = $('text').value.trim();
+  if (!/^\d+([.,]\d{1,2})?$/.test(betrag) || Number(betrag.replace(',', '.')) <= 0) { meldung('Bitte Betrag wie 12,50 eingeben.', 'err'); $('betrag').focus(); return; }
+  if (!text) { meldung('Bitte kurz eintragen, wofür.', 'err'); $('text').focus(); return; }
+  $('save').disabled = true;
+  try {
+    zeigeListe(await api('speichern', {eintrag: {betrag, art, kategorie: kat, text, datum: $('datum').value}}));
+    meldung(`Gespeichert: ${betrag.replace('.', ',')} € · ${kat}`, 'ok');
+    $('betrag').value = ''; $('text').value = ''; $('betrag').focus();
+  } catch (err) {
+    meldung(err.message === 'Failed to fetch' ? 'Keine Verbindung – bitte nochmal versuchen.' : err.message, 'err');
+  } finally { $('save').disabled = false; }
+});
+$('datum').value = heute();
+setzeArt('Ausgabe');
+if (!K) {
+  $('f').innerHTML = '<p style="margin:0;color:var(--muted)">Bitte den vollständigen Link mit Schlüssel öffnen.</p>';
+  $('liste').innerHTML = '';
+} else {
+  api('liste').then(zeigeListe).catch(err => $('liste').innerHTML = `<li class="leer">${esc(err.message === 'Kein Zugriff' ? 'Kein Zugriff – Schlüssel prüfen.' : 'Liste nicht verfügbar.')}</li>`);
+}
+</script>
+</body>
+</html>
